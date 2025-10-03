@@ -1,0 +1,17 @@
+.zigzag-header {
+  background: repeating-linear-gradient(
+    -45deg,
+    orange,
+    orange 20px,
+    #fff 20px,
+    #fff 40px
+  );
+  border-bottom: 8px solid orange;
+}
+.zigzag-header h1,
+.zigzag-header p {
+  text-shadow: 1px 1px 3px rgba(0,0,0,0.1);
+}
+main {
+  min-height: 300px;
+}
