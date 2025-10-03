@@ -1,33 +1,153 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Job Eater</title>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-  <link rel="stylesheet" href="style.css">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dreamina CapCut AI Clone - Prototype</title>
+    <script src="https://unpkg.com/@ffmpeg/ffmpeg@0.12.6/dist/umd/ffmpeg.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+        .upload-section { border: 2px dashed #ccc; padding: 20px; margin: 10px 0; text-align: center; }
+        input[type="file"] { margin: 10px; }
+        button { background: #007bff; color: white; padding: 10px 20px; border: none; cursor: pointer; margin: 10px; }
+        button:hover { background: #0056b3; }
+        #preview { width: 100%; max-width: 600px; margin: 20px 0; }
+        .loading { color: #666; font-style: italic; }
+    </style>
 </head>
 <body>
-  <!-- Zig-Zag Orange Header -->
-  <header class="zigzag-header text-center text-white py-5">
-    <h1>Job Eater</h1>
-    <p>Your gateway to career opportunities</p>
-  </header>
+    <h1>Dreamina CapCut AI Clone</h1>
+    <p>Upload a video and optional audio. We'll detect beats and add synced cuts/movements.</p>
 
-  <main class="container my-5">
-    <!-- PLACE YOUR MAIN CONTENT HERE -->
-    <section>
-      <h2>Welcome to Job Eater!</h2>
-      <p>
-        <!-- Write your introduction or site purpose here -->
-      </p>
-    </section>
-  </main>
+    <div class="upload-section">
+        <h2>Upload Video</h2>
+        <input type="file" id="videoInput" accept="video/*">
+    </div>
 
-  <footer class="text-center py-4 bg-light">
-    &copy; 2025 Job Eater. All Rights Reserved.
-  </footer>
+    <div class="upload-section">
+        <h2>Upload Audio (Optional)</h2>
+        <input type="file" id="audioInput" accept="audio/*">
+    </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <button onclick="processVideo()">Process with AI Edits</button>
+    <div id="status" class="loading" style="display: none;">Processing... Detecting beats and applying cuts/movements.</div>
+
+    <h2>Preview Edited Video</h2>
+    <video id="preview" controls style="display: none;"></video>
+    <button id="downloadBtn" onclick="downloadVideo()" style="display: none;">Download Edited Video</button>
+
+    <script>
+        let originalVideo = null;
+        let editedVideoBlob = null;
+        const { FFmpeg } = FFmpegWASM;
+        const ffmpeg = new FFmpeg();
+
+        // Load FFmpeg on page load
+        window.onload = async () => {
+            await ffmpeg.load();
+        };
+
+        async function processVideo() {
+            const videoInput = document.getElementById('videoInput').files[0];
+            const audioInput = document.getElementById('audioInput').files[0];
+            if (!videoInput) {
+                alert('Please upload a video.');
+                return;
+            }
+
+            document.getElementById('status').style.display = 'block';
+
+            // Step 1: Load video into memory
+            originalVideo = await videoToBlob(videoInput);
+            let audioBlob = audioInput ? await audioToBlob(audioInput) : await extractAudioFromVideo(originalVideo);
+
+            // Step 2: Simulate beat detection using Web Audio API
+            const beats = await detectBeats(audioBlob);
+            console.log('Detected beats at times:', beats); // e.g., [1.2, 2.5, 4.0] seconds
+
+            // Step 3: Apply edits with FFmpeg (trim to beats, add simple effects)
+            editedVideoBlob = await applyEdits(originalVideo, beats);
+
+            // Step 4: Preview
+            const preview = document.getElementById('preview');
+            preview.src = URL.createObjectURL(editedVideoBlob);
+            preview.style.display = 'block';
+            document.getElementById('downloadBtn').style.display = 'inline-block';
+            document.getElementById('status').style.display = 'none';
+        }
+
+        // Helper: Convert file to Blob URL
+        function videoToBlob(file) {
+            return new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(new Blob([reader.result], { type: file.type }));
+                reader.readAsArrayBuffer(file);
+            });
+        }
+
+        function audioToBlob(file) {
+            return new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(new Blob([reader.result], { type: file.type }));
+                reader.readAsArrayBuffer(file);
+            });
+        }
+
+        // Simulate audio extraction (placeholder; use FFmpeg for real)
+        async function extractAudioFromVideo(videoBlob) {
+            // For demo, return a dummy audio blob (in production, use ffmpeg -i input.mp4 -vn audio.wav)
+            await ffmpeg.writeFile('input.mp4', await videoBlob.arrayBuffer());
+            await ffmpeg.exec(['-i', 'input.mp4', '-vn', 'audio.wav']);
+            const data = await ffmpeg.readFile('audio.wav');
+            return new Blob([data.buffer], { type: 'audio/wav' });
+        }
+
+        // Basic beat detection using Web Audio API (simplified frequency analysis)
+        async function detectBeats(audioBlob) {
+            const audioContext = new AudioContext();
+            const arrayBuffer = await audioBlob.arrayBuffer();
+            const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+            const data = audioBuffer.getChannelData(0); // Mono channel
+
+            const beats = [];
+            let lastBeat = 0;
+            for (let i = 0; i < data.length; i += 1024) { // Sample every 1024 frames (~0.02s at 48kHz)
+                const chunk = data.slice(i, i + 1024);
+                const energy = chunk.reduce((a, b) => a + b * b, 0); // RMS energy
+                if (energy > 0.01 && (i / audioContext.sampleRate - lastBeat) > 0.5) { // Threshold and min interval
+                    beats.push(i / audioContext.sampleRate);
+                    lastBeat = i / audioContext.sampleRate;
+                }
+            }
+            return beats.slice(0, 5); // Limit to 5 beats for demo
+        }
+
+        // Apply edits: Trim video into segments at beats, add zoom/pan (simulated via FFmpeg filters)
+        async function applyEdits(videoBlob, beats) {
+            const inputName = 'input.mp4';
+            await ffmpeg.writeFile(inputName, await videoBlob.arrayBuffer());
+
+            // For demo: Concat simple trims (e.g., cut every 2s, add zoom filter)
+            let filterComplex = 'split=3[a][b][c]; [a]scale=iw*1.1:ih*1.1,zoompan=z=\'zoom+0.001\':d=125 [zoomed];';
+            beats.forEach((beat, index) => {
+                filterComplex += `[b]trim=start=${beat}:duration=2,setpts=PTS-STARTPTS [cut${index}];`;
+            });
+            filterComplex += `[zoomed][cut0]overlay=0:0 [out];`; // Basic overlay for movement
+
+            await ffmpeg.exec(['-i', inputName, '-filter_complex', filterComplex, '-map', '[out]', 'output.mp4']);
+            const data = await ffmpeg.readFile('output.mp4');
+            return new Blob([data.buffer], { type: 'video/mp4' });
+        }
+
+        function downloadVideo() {
+            if (editedVideoBlob) {
+                const url = URL.createObjectURL(editedVideoBlob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'edited-video.mp4';
+                a.click();
+            }
+        }
+    </script>
 </body>
 </html>
