@@ -11,7 +11,29 @@
         input[type="file"] { margin: 10px; }
         button { background: #007bff; color: white; padding: 10px 20px; border: none; cursor: pointer; margin: 10px; }
         button:hover { background: #0056b3; }
-        #preview { width: 100%; max-width: 600px; margin: 20px 0; }
+        #status { color: #666; font-style: italic; margin: 10px 0; }
+        #timingInfo { 
+            background: #f8f9fa; 
+            padding: 10px; 
+            border-radius: 5px; 
+            margin: 10px 0; 
+            text-align: center; 
+            font-weight: bold; 
+            color: #007bff; 
+        }
+        .preview-section { 
+            position: relative; 
+            margin-top: 20px; 
+            padding-bottom: 20px; 
+        }
+        #preview { 
+            width: 100%; 
+            max-width: 600px; 
+            display: block; 
+            margin: 0 auto; 
+            border: 1px solid #ddd; 
+            border-radius: 5px; 
+        }
         .loading { color: #666; font-style: italic; }
     </style>
 </head>
@@ -32,13 +54,17 @@
     <button onclick="processVideo()">Process with AI Edits</button>
     <div id="status" class="loading" style="display: none;">Processing... Detecting beats and applying cuts/movements.</div>
 
-    <h2>Preview Edited Video</h2>
-    <video id="preview" controls style="display: none;"></video>
-    <button id="downloadBtn" onclick="downloadVideo()" style="display: none;">Download Edited Video</button>
+    <div class="preview-section">
+        <div id="timingInfo" style="display: none;"></div>
+        <h2>Preview Edited Video</h2>
+        <video id="preview" controls style="display: none;"></video>
+        <button id="downloadBtn" onclick="downloadVideo()" style="display: none; margin-top: 10px;">Download Edited Video</button>
+    </div>
 
     <script>
         let originalVideo = null;
         let editedVideoBlob = null;
+        let originalDuration = 0;
         const { FFmpeg } = FFmpegWASM;
         const ffmpeg = new FFmpeg();
 
@@ -56,22 +82,42 @@
             }
 
             document.getElementById('status').style.display = 'block';
+            document.getElementById('timingInfo').style.display = 'block';
 
-            // Step 1: Load video into memory
+            // Step 1: Get original video duration for estimation
+            const tempVideo = document.createElement('video');
+            tempVideo.src = URL.createObjectURL(videoInput);
+            await new Promise(resolve => {
+                tempVideo.onloadedmetadata = () => {
+                    originalDuration = tempVideo.duration;
+                    resolve();
+                };
+            });
+            URL.revokeObjectURL(tempVideo.src);
+
+            // Calculate estimated processing time (heuristic: 10-30s base + 1s per second of video)
+            const estimatedTime = Math.max(10, originalDuration * 1 + (videoInput.size / 1000000) * 0.5); // Rough: size in MB affects time
+            document.getElementById('timingInfo').innerHTML = `Estimated processing time: ${Math.round(estimatedTime)} seconds (based on ${Math.round(originalDuration)}s video)`;
+
+            // Step 2: Load video into memory
             originalVideo = await videoToBlob(videoInput);
             let audioBlob = audioInput ? await audioToBlob(audioInput) : await extractAudioFromVideo(originalVideo);
 
-            // Step 2: Simulate beat detection using Web Audio API
+            // Step 3: Simulate beat detection using Web Audio API
             const beats = await detectBeats(audioBlob);
             console.log('Detected beats at times:', beats); // e.g., [1.2, 2.5, 4.0] seconds
 
-            // Step 3: Apply edits with FFmpeg (trim to beats, add simple effects)
+            // Step 4: Apply edits with FFmpeg (trim to beats, add simple effects)
             editedVideoBlob = await applyEdits(originalVideo, beats);
 
-            // Step 4: Preview
+            // Step 5: Preview and show final duration
             const preview = document.getElementById('preview');
             preview.src = URL.createObjectURL(editedVideoBlob);
             preview.style.display = 'block';
+            preview.onloadedmetadata = () => {
+                const finalDuration = preview.duration;
+                document.getElementById('timingInfo').innerHTML = `Final video duration: ${Math.round(finalDuration)} seconds (original: ${Math.round(originalDuration)}s)`;
+            };
             document.getElementById('downloadBtn').style.display = 'inline-block';
             document.getElementById('status').style.display = 'none';
         }
@@ -150,4 +196,4 @@
         }
     </script>
 </body>
-</html>
+    </html>
